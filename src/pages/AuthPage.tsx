@@ -106,6 +106,14 @@ const AuthPage = () => {
   // Email OTP via Supabase's built-in mailer — no Resend / no domain verification needed.
   // The default Supabase email template embeds a 6-digit {{ .Token }}.
 
+  const friendlyOtpError = (msg: string): string => {
+    if (/expired|invalid token|token has expired/i.test(msg)) return "That code expired — tap Resend to get a new one.";
+    if (/invalid|incorrect/i.test(msg)) return "That code is incorrect. Double-check the latest email.";
+    if (/rate ?limit|too many/i.test(msg)) return "Too many attempts — wait a minute before trying again.";
+    if (/user not found|no user/i.test(msg)) return "No account with that email. Tap Sign Up to create one.";
+    return msg;
+  };
+
   const handleForgotPassword = async () => {
     setLoading(true);
     try {
@@ -116,22 +124,56 @@ const AuthPage = () => {
         });
         if (error) throw error;
         setForgotStep("verify");
-        toast.success("We emailed you a 6-digit code");
+        forgotOtp.markSent();
+        toast.success("We emailed you a 6-digit code (expires in 10 min)");
       } else {
+        if (forgotOtp.expired) throw new Error("That code expired — tap Resend to get a new one.");
         const { error: vErr } = await supabase.auth.verifyOtp({
           email,
           token: otp.replace(/\D/g, "").slice(-6),
           type: "email",
         });
-        if (vErr) throw vErr;
-        // Session is now active — update password.
+        if (vErr) throw new Error(friendlyOtpError(vErr.message));
         const { error: uErr } = await supabase.auth.updateUser({ password: newPassword });
         if (uErr) throw uErr;
+        const { data: { user: u } } = await supabase.auth.getUser();
         window.dispatchEvent(new CustomEvent("welcome-back"));
-        navigate("/");
+        navigate(u ? await routeAfterAuth(u.id) : "/");
       }
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendOtp = async (which: "signup" | "forgot") => {
+    const timer = which === "signup" ? signupOtp : forgotOtp;
+    if (!timer.canResend) {
+      toast.error(`Please wait ${timer.resendIn}s before requesting another code.`);
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: which === "signup",
+          data: which === "signup" ? { username, display_name: username } : undefined,
+        },
+      });
+      if (error) {
+        if (/rate ?limit|too many/i.test(error.message)) {
+          toast.error("Resend rate-limited by the server. Try again in 60 seconds.");
+          return;
+        }
+        throw error;
+      }
+      timer.markSent();
+      setOtp("");
+      toast.success("New 6-digit code sent");
+    } catch (e: any) {
+      toast.error(e.message);
     } finally {
       setLoading(false);
     }
@@ -158,22 +200,24 @@ const AuthPage = () => {
           });
           if (error) throw error;
           setSignupStep("verify");
-          toast.success("We emailed you a 6-digit code");
+          signupOtp.markSent();
+          toast.success("We emailed you a 6-digit code (expires in 10 min)");
         } else {
+          if (signupOtp.expired) throw new Error("That code expired — tap Resend to get a new one.");
           const { error: vErr } = await supabase.auth.verifyOtp({
             email,
             token: otp.replace(/\D/g, "").slice(-6),
             type: "email",
           });
-          if (vErr) throw vErr;
-          // Session active — set the chosen password so the user can use email+password later.
+          if (vErr) throw new Error(friendlyOtpError(vErr.message));
+          // Account is now confirmed. Set the chosen password so the user can log in normally.
           const { error: uErr } = await supabase.auth.updateUser({ password });
           if (uErr) throw uErr;
-          // Persist the full profile fields we collected on step 1.
           const { data: { user: u } } = await supabase.auth.getUser();
           if (u) await persistProfileFields(u.id);
           window.dispatchEvent(new CustomEvent("welcome-back", { detail: { name: username } }));
-          navigate("/");
+          toast.success("Account confirmed — welcome!");
+          navigate(u ? await routeAfterAuth(u.id) : "/edit-profile");
         }
       } else {
         // LOGIN mode — password only. Use "Forgot password?" for OTP reset.
