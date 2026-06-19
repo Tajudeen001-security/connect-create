@@ -13,6 +13,8 @@ const COUNTRIES = ["Nigeria","United States","United Kingdom","Ghana","South Afr
 const AuthPage = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("login");
+  const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
+  const [loginOtpStep, setLoginOtpStep] = useState<CodeStep>("request");
   const method: AuthMethod = "email";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -172,10 +174,50 @@ const AuthPage = () => {
           navigate("/");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        window.dispatchEvent(new CustomEvent("welcome-back"));
-        navigate("/");
+        // LOGIN mode — supports password or OTP. Existing password accounts keep
+        // working; users without a password (created via OTP) can use the code path.
+        if (loginMethod === "otp") {
+          if (loginOtpStep === "request") {
+            if (!email) throw new Error("Enter your email first");
+            const { error } = await supabase.auth.signInWithOtp({
+              email,
+              options: { shouldCreateUser: false },
+            });
+            if (error) throw error;
+            setLoginOtpStep("verify");
+            toast.success("We emailed you a 6-digit code");
+          } else {
+            const { error: vErr } = await supabase.auth.verifyOtp({
+              email,
+              token: otp.replace(/\D/g, "").slice(-6),
+              type: "email",
+            });
+            if (vErr) throw vErr;
+            window.dispatchEvent(new CustomEvent("welcome-back"));
+            navigate("/");
+          }
+        } else {
+          const { error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) {
+            // Auto-fallback: account exists but has no password (OTP-created).
+            if (/invalid login credentials|invalid_credentials/i.test(error.message)) {
+              toast.error("Wrong password — try a sign-in code instead", {
+                action: {
+                  label: "Send code",
+                  onClick: () => {
+                    setLoginMethod("otp");
+                    setLoginOtpStep("request");
+                    setOtp("");
+                  },
+                },
+              });
+              return;
+            }
+            throw error;
+          }
+          window.dispatchEvent(new CustomEvent("welcome-back"));
+          navigate("/");
+        }
       }
     } catch (error: any) {
       toast.error(error.message);
@@ -279,7 +321,7 @@ const AuthPage = () => {
               disabled={mode === "forgot" && forgotStep === "verify"}
             />
 
-          {mode !== "forgot" && (
+          {mode !== "forgot" && !(mode === "login" && loginMethod === "otp") && (
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -299,7 +341,9 @@ const AuthPage = () => {
             </div>
           )}
 
-          {((mode === "forgot" && forgotStep === "verify") || (mode === "signup" && signupStep === "verify")) && (
+          {((mode === "forgot" && forgotStep === "verify") ||
+            (mode === "signup" && signupStep === "verify") ||
+            (mode === "login" && loginMethod === "otp" && loginOtpStep === "verify")) && (
             <input
               type="text"
               placeholder="6-digit code from email"
@@ -334,14 +378,33 @@ const AuthPage = () => {
               : mode === "forgot"
                 ? (forgotStep === "request" ? "Send 6-digit Code" : "Verify & Reset Password")
                 : mode === "login"
-                  ? "Sign In"
+                  ? (loginMethod === "otp"
+                      ? (loginOtpStep === "request" ? "Send 6-digit Code" : "Verify & Sign In")
+                      : "Sign In")
                   : (signupStep === "request" ? "Send 6-digit Code" : "Verify & Create Account")}
           </button>
         </form>
 
-        {/* Forgot password link */}
+        {/* Login helpers: switch between password and OTP, plus forgot password */}
         {mode === "login" && (
-          <p className="text-center text-sm mt-4">
+          <div className="flex items-center justify-between mt-4 text-sm">
+            <button
+              type="button"
+              className="text-gold font-semibold"
+              onClick={() => {
+                if (loginMethod === "password") {
+                  setLoginMethod("otp");
+                  setLoginOtpStep("request");
+                  setOtp("");
+                } else {
+                  setLoginMethod("password");
+                  setLoginOtpStep("request");
+                  setOtp("");
+                }
+              }}
+            >
+              {loginMethod === "password" ? "Sign in with a code" : "Use password instead"}
+            </button>
             <button
               onClick={() => { setMode("forgot"); setForgotStep("request"); setOtp(""); setNewPassword(""); }}
               className="text-gold font-semibold"
@@ -349,7 +412,7 @@ const AuthPage = () => {
             >
               Forgot password?
             </button>
-          </p>
+          </div>
         )}
 
         {/* Toggle mode */}
