@@ -2,7 +2,9 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Mail, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { Mail, ArrowLeft, Eye, EyeOff, Timer, RotateCw } from "lucide-react";
+import { useOtpTimer, formatCountdown } from "@/hooks/useOtpTimer";
+import { routeAfterAuth } from "@/lib/postAuthRoute";
 
 type AuthMode = "login" | "signup" | "forgot";
 type AuthMethod = "email";
@@ -13,9 +15,9 @@ const COUNTRIES = ["Nigeria","United States","United Kingdom","Ghana","South Afr
 const AuthPage = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("login");
-  const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
-  const [loginOtpStep, setLoginOtpStep] = useState<CodeStep>("request");
   const method: AuthMethod = "email";
+  const signupOtp = useOtpTimer();
+  const forgotOtp = useOtpTimer();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -104,6 +106,14 @@ const AuthPage = () => {
   // Email OTP via Supabase's built-in mailer — no Resend / no domain verification needed.
   // The default Supabase email template embeds a 6-digit {{ .Token }}.
 
+  const friendlyOtpError = (msg: string): string => {
+    if (/expired|invalid token|token has expired/i.test(msg)) return "That code expired — tap Resend to get a new one.";
+    if (/invalid|incorrect/i.test(msg)) return "That code is incorrect. Double-check the latest email.";
+    if (/rate ?limit|too many/i.test(msg)) return "Too many attempts — wait a minute before trying again.";
+    if (/user not found|no user/i.test(msg)) return "No account with that email. Tap Sign Up to create one.";
+    return msg;
+  };
+
   const handleForgotPassword = async () => {
     setLoading(true);
     try {
@@ -114,22 +124,56 @@ const AuthPage = () => {
         });
         if (error) throw error;
         setForgotStep("verify");
-        toast.success("We emailed you a 6-digit code");
+        forgotOtp.markSent();
+        toast.success("We emailed you a 6-digit code (expires in 10 min)");
       } else {
+        if (forgotOtp.expired) throw new Error("That code expired — tap Resend to get a new one.");
         const { error: vErr } = await supabase.auth.verifyOtp({
           email,
           token: otp.replace(/\D/g, "").slice(-6),
           type: "email",
         });
-        if (vErr) throw vErr;
-        // Session is now active — update password.
+        if (vErr) throw new Error(friendlyOtpError(vErr.message));
         const { error: uErr } = await supabase.auth.updateUser({ password: newPassword });
         if (uErr) throw uErr;
+        const { data: { user: u } } = await supabase.auth.getUser();
         window.dispatchEvent(new CustomEvent("welcome-back"));
-        navigate("/");
+        navigate(u ? await routeAfterAuth(u.id) : "/");
       }
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendOtp = async (which: "signup" | "forgot") => {
+    const timer = which === "signup" ? signupOtp : forgotOtp;
+    if (!timer.canResend) {
+      toast.error(`Please wait ${timer.resendIn}s before requesting another code.`);
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: which === "signup",
+          data: which === "signup" ? { username, display_name: username } : undefined,
+        },
+      });
+      if (error) {
+        if (/rate ?limit|too many/i.test(error.message)) {
+          toast.error("Resend rate-limited by the server. Try again in 60 seconds.");
+          return;
+        }
+        throw error;
+      }
+      timer.markSent();
+      setOtp("");
+      toast.success("New 6-digit code sent");
+    } catch (e: any) {
+      toast.error(e.message);
     } finally {
       setLoading(false);
     }
@@ -156,68 +200,44 @@ const AuthPage = () => {
           });
           if (error) throw error;
           setSignupStep("verify");
-          toast.success("We emailed you a 6-digit code");
+          signupOtp.markSent();
+          toast.success("We emailed you a 6-digit code (expires in 10 min)");
         } else {
+          if (signupOtp.expired) throw new Error("That code expired — tap Resend to get a new one.");
           const { error: vErr } = await supabase.auth.verifyOtp({
             email,
             token: otp.replace(/\D/g, "").slice(-6),
             type: "email",
           });
-          if (vErr) throw vErr;
-          // Session active — set the chosen password so the user can use email+password later.
+          if (vErr) throw new Error(friendlyOtpError(vErr.message));
+          // Account is now confirmed. Set the chosen password so the user can log in normally.
           const { error: uErr } = await supabase.auth.updateUser({ password });
           if (uErr) throw uErr;
-          // Persist the full profile fields we collected on step 1.
           const { data: { user: u } } = await supabase.auth.getUser();
           if (u) await persistProfileFields(u.id);
           window.dispatchEvent(new CustomEvent("welcome-back", { detail: { name: username } }));
-          navigate("/");
+          toast.success("Account confirmed — welcome!");
+          navigate(u ? await routeAfterAuth(u.id) : "/edit-profile");
         }
       } else {
-        // LOGIN mode — supports password or OTP. Existing password accounts keep
-        // working; users without a password (created via OTP) can use the code path.
-        if (loginMethod === "otp") {
-          if (loginOtpStep === "request") {
-            if (!email) throw new Error("Enter your email first");
-            const { error } = await supabase.auth.signInWithOtp({
-              email,
-              options: { shouldCreateUser: false },
+        // LOGIN mode — password only. Use "Forgot password?" for OTP reset.
+        const { error, data } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          if (/invalid login credentials|invalid_credentials/i.test(error.message)) {
+            toast.error("Wrong email or password", {
+              description: "If you signed up but never set a password, tap Forgot password to set one.",
             });
-            if (error) throw error;
-            setLoginOtpStep("verify");
-            toast.success("We emailed you a 6-digit code");
-          } else {
-            const { error: vErr } = await supabase.auth.verifyOtp({
-              email,
-              token: otp.replace(/\D/g, "").slice(-6),
-              type: "email",
-            });
-            if (vErr) throw vErr;
-            window.dispatchEvent(new CustomEvent("welcome-back"));
-            navigate("/");
+            return;
           }
-        } else {
-          const { error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) {
-            // Auto-fallback: account exists but has no password (OTP-created).
-            if (/invalid login credentials|invalid_credentials/i.test(error.message)) {
-              toast.error("Wrong password — try a sign-in code instead", {
-                action: {
-                  label: "Send code",
-                  onClick: () => {
-                    setLoginMethod("otp");
-                    setLoginOtpStep("request");
-                    setOtp("");
-                  },
-                },
-              });
-              return;
-            }
-            throw error;
+          if (/email not confirmed|not confirmed/i.test(error.message)) {
+            toast.error("Confirm your email first — check your inbox for the 6-digit code.");
+            return;
           }
-          window.dispatchEvent(new CustomEvent("welcome-back"));
-          navigate("/");
+          throw error;
         }
+        window.dispatchEvent(new CustomEvent("welcome-back"));
+        const dest = data.user ? await routeAfterAuth(data.user.id) : "/";
+        navigate(dest);
       }
     } catch (error: any) {
       toast.error(error.message);
@@ -321,7 +341,7 @@ const AuthPage = () => {
               disabled={mode === "forgot" && forgotStep === "verify"}
             />
 
-          {mode !== "forgot" && !(mode === "login" && loginMethod === "otp") && (
+          {mode !== "forgot" && (
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -342,18 +362,42 @@ const AuthPage = () => {
           )}
 
           {((mode === "forgot" && forgotStep === "verify") ||
-            (mode === "signup" && signupStep === "verify") ||
-            (mode === "login" && loginMethod === "otp" && loginOtpStep === "verify")) && (
-            <input
-              type="text"
-              placeholder="6-digit code from email"
-              inputMode="numeric"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-foreground placeholder:text-muted-foreground outline-none focus:border-primary text-sm text-center tracking-[0.5em]"
-              maxLength={6}
-              required
-            />
+            (mode === "signup" && signupStep === "verify")) && (
+            <>
+              <input
+                type="text"
+                placeholder="6-digit code from email"
+                inputMode="numeric"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-foreground placeholder:text-muted-foreground outline-none focus:border-primary text-sm text-center tracking-[0.5em]"
+                maxLength={6}
+                required
+              />
+              {(() => {
+                const which: "signup" | "forgot" = mode === "signup" ? "signup" : "forgot";
+                const t = which === "signup" ? signupOtp : forgotOtp;
+                return (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Timer className="size-3.5" />
+                      {t.expired
+                        ? <span className="text-red-400">Code expired</span>
+                        : <>Expires in <b className="text-foreground">{formatCountdown(t.expiresIn)}</b></>}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={loading || !t.canResend}
+                      onClick={() => resendOtp(which)}
+                      className="inline-flex items-center gap-1 text-gold font-semibold disabled:opacity-50 disabled:text-muted-foreground"
+                    >
+                      <RotateCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+                      {t.canResend ? "Resend code" : `Resend in ${t.resendIn}s`}
+                    </button>
+                  </div>
+                );
+              })()}
+            </>
           )}
 
           {mode === "forgot" && forgotStep === "verify" && (
@@ -378,41 +422,22 @@ const AuthPage = () => {
               : mode === "forgot"
                 ? (forgotStep === "request" ? "Send 6-digit Code" : "Verify & Reset Password")
                 : mode === "login"
-                  ? (loginMethod === "otp"
-                      ? (loginOtpStep === "request" ? "Send 6-digit Code" : "Verify & Sign In")
-                      : "Sign In")
+                  ? "Sign In"
                   : (signupStep === "request" ? "Send 6-digit Code" : "Verify & Create Account")}
           </button>
         </form>
 
-        {/* Login helpers: switch between password and OTP, plus forgot password */}
+        {/* Forgot password */}
         {mode === "login" && (
-          <div className="flex items-center justify-between mt-4 text-sm">
+          <p className="text-center text-sm mt-4">
             <button
-              type="button"
-              className="text-gold font-semibold"
-              onClick={() => {
-                if (loginMethod === "password") {
-                  setLoginMethod("otp");
-                  setLoginOtpStep("request");
-                  setOtp("");
-                } else {
-                  setLoginMethod("password");
-                  setLoginOtpStep("request");
-                  setOtp("");
-                }
-              }}
-            >
-              {loginMethod === "password" ? "Sign in with a code" : "Use password instead"}
-            </button>
-            <button
-              onClick={() => { setMode("forgot"); setForgotStep("request"); setOtp(""); setNewPassword(""); }}
+              onClick={() => { setMode("forgot"); setForgotStep("request"); setOtp(""); setNewPassword(""); forgotOtp.reset(); }}
               className="text-gold font-semibold"
               type="button"
             >
               Forgot password?
             </button>
-          </div>
+          </p>
         )}
 
         {/* Toggle mode */}
