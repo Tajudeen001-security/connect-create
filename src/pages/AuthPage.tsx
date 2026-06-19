@@ -297,7 +297,7 @@ const AuthPage = () => {
               disabled={mode === "forgot" && forgotStep === "verify"}
             />
 
-          {mode !== "forgot" && !(mode === "login" && loginMethod === "otp") && (
+          {mode !== "forgot" && (
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -318,8 +318,7 @@ const AuthPage = () => {
           )}
 
           {((mode === "forgot" && forgotStep === "verify") ||
-            (mode === "signup" && signupStep === "verify") ||
-            (mode === "login" && loginMethod === "otp" && loginOtpStep === "verify")) && (
+            (mode === "signup" && signupStep === "verify")) && (
             <input
               type="text"
               placeholder="6-digit code from email"
@@ -354,41 +353,22 @@ const AuthPage = () => {
               : mode === "forgot"
                 ? (forgotStep === "request" ? "Send 6-digit Code" : "Verify & Reset Password")
                 : mode === "login"
-                  ? (loginMethod === "otp"
-                      ? (loginOtpStep === "request" ? "Send 6-digit Code" : "Verify & Sign In")
-                      : "Sign In")
+                  ? "Sign In"
                   : (signupStep === "request" ? "Send 6-digit Code" : "Verify & Create Account")}
           </button>
         </form>
 
-        {/* Login helpers: switch between password and OTP, plus forgot password */}
+        {/* Forgot password */}
         {mode === "login" && (
-          <div className="flex items-center justify-between mt-4 text-sm">
+          <p className="text-center text-sm mt-4">
             <button
-              type="button"
-              className="text-gold font-semibold"
-              onClick={() => {
-                if (loginMethod === "password") {
-                  setLoginMethod("otp");
-                  setLoginOtpStep("request");
-                  setOtp("");
-                } else {
-                  setLoginMethod("password");
-                  setLoginOtpStep("request");
-                  setOtp("");
-                }
-              }}
-            >
-              {loginMethod === "password" ? "Sign in with a code" : "Use password instead"}
-            </button>
-            <button
-              onClick={() => { setMode("forgot"); setForgotStep("request"); setOtp(""); setNewPassword(""); }}
+              onClick={() => { setMode("forgot"); setForgotStep("request"); setOtp(""); setNewPassword(""); forgotOtp.reset(); }}
               className="text-gold font-semibold"
               type="button"
             >
               Forgot password?
             </button>
-          </div>
+          </p>
         )}
 
         {/* Toggle mode */}
