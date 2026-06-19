@@ -176,50 +176,24 @@ const AuthPage = () => {
           navigate("/");
         }
       } else {
-        // LOGIN mode — supports password or OTP. Existing password accounts keep
-        // working; users without a password (created via OTP) can use the code path.
-        if (loginMethod === "otp") {
-          if (loginOtpStep === "request") {
-            if (!email) throw new Error("Enter your email first");
-            const { error } = await supabase.auth.signInWithOtp({
-              email,
-              options: { shouldCreateUser: false },
+        // LOGIN mode — password only. Use "Forgot password?" for OTP reset.
+        const { error, data } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          if (/invalid login credentials|invalid_credentials/i.test(error.message)) {
+            toast.error("Wrong email or password", {
+              description: "If you signed up but never set a password, tap Forgot password to set one.",
             });
-            if (error) throw error;
-            setLoginOtpStep("verify");
-            toast.success("We emailed you a 6-digit code");
-          } else {
-            const { error: vErr } = await supabase.auth.verifyOtp({
-              email,
-              token: otp.replace(/\D/g, "").slice(-6),
-              type: "email",
-            });
-            if (vErr) throw vErr;
-            window.dispatchEvent(new CustomEvent("welcome-back"));
-            navigate("/");
+            return;
           }
-        } else {
-          const { error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) {
-            // Auto-fallback: account exists but has no password (OTP-created).
-            if (/invalid login credentials|invalid_credentials/i.test(error.message)) {
-              toast.error("Wrong password — try a sign-in code instead", {
-                action: {
-                  label: "Send code",
-                  onClick: () => {
-                    setLoginMethod("otp");
-                    setLoginOtpStep("request");
-                    setOtp("");
-                  },
-                },
-              });
-              return;
-            }
-            throw error;
+          if (/email not confirmed|not confirmed/i.test(error.message)) {
+            toast.error("Confirm your email first — check your inbox for the 6-digit code.");
+            return;
           }
-          window.dispatchEvent(new CustomEvent("welcome-back"));
-          navigate("/");
+          throw error;
         }
+        window.dispatchEvent(new CustomEvent("welcome-back"));
+        const dest = data.user ? await routeAfterAuth(data.user.id) : "/";
+        navigate(dest);
       }
     } catch (error: any) {
       toast.error(error.message);
