@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/p/:id", "destination": "https://fwjxhozxlucaywpavznu.supabase.co/functions/v1/og-post?id=:id" },
+    { "source": "/u/:username", "destination": "https://fwjxhozxlucaywpavznu.supabase.co/functions/v1/og-profile?u=:username" },
+    { "source": "/((?!.*\\..*|api/.*).*)", "destination": "/index.html" }
+  ]
+}

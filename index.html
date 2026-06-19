@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JagX Connect — Social, Reels, Live & Chat</title>
+    <meta name="description" content="JagX Connect — created by JRI (JagX in Connect) on the order of JRI. Share posts and reels, go live, chat with friends, send JagX Coin gifts and discover creators." />
+    <meta name="keywords" content="JagX, JagX Connect, JagX Buddy Connect, JagX Coin, JRI, JRILISECE, social media, reels, live streaming, chat" />
+    <meta name="author" content="JRI — JagX in Connect (build for future generations)" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://jagx-buddy-connect.name.ng/" />
+    <meta name="google-site-verification" content="HPbR4lJzhWsLx08KzRCNcICTA9hs2F55rsSODKhWT5A" />
+    <meta name="google-site-verification" content="Qklb38Qlmn1f5eBxEIPeHH13MMiczi7OpXnuUkQ9a84" />
+
+    <!-- iOS / mobile web app support (Safari, Add to Home Screen) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="JagX Connect" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <link rel="apple-touch-icon" href="/image-5 (1).jpg" />
+
+    <!-- PWA: Installable / Add to Home Screen -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Google AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6037723607677223" crossorigin="anonymous"></script>
+
+    <!-- Google tag (gtag.js) — Consent Mode v2: denied by default until user opts in -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-LZWPQ1VYYN"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      window.gtag = gtag;
+
+      // Default consent: denied (GDPR/ePrivacy safe)
+      try {
+        var stored = localStorage.getItem('jagx_consent');
+        var granted = stored === 'granted';
+        gtag('consent', 'default', {
+          ad_storage: granted ? 'granted' : 'denied',
+          ad_user_data: granted ? 'granted' : 'denied',
+          ad_personalization: granted ? 'granted' : 'denied',
+          analytics_storage: granted ? 'granted' : 'denied',
+          functionality_storage: 'granted',
+          security_storage: 'granted',
+          wait_for_update: 500
+        });
+      } catch (e) {
+        gtag('consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied' });
+      }
+
+      gtag('js', new Date());
+      gtag('config', 'G-LZWPQ1VYYN', { anonymize_ip: true });
+    </script>
+
+    <!-- Open Graph / Social Preview -->
+    <meta property="og:title" content="JagX Connect — Social, Reels, Live & Chat" />
+    <meta property="og:description" content="Created by JRI (JagX in Connect). Share posts and reels, go live, chat with friends and send JagX Coin gifts." />
+    <meta property="og:site_name" content="JagX Connect" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://jagx-buddy-connect.name.ng/" />
+    <meta property="og:image" content="https://jagx-buddy-connect.name.ng/image-5 (1).jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="JagX Connect — Social, Reels, Live & Chat" />
+    <meta name="twitter:description" content="Created by JRI (JagX in Connect) — posts, reels, live & chat." />
+    <meta name="twitter:image" content="https://jagx-buddy-connect.name.ng/image-5 (1).jpg" />
+
+    <!-- Structured data: WebSite + SearchAction so Google can show a sitelinks search box -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "JagX Connect",
+      "alternateName": ["JagX"],
+      "url": "https://jagx-buddy-connect.name.ng/",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://jagx-buddy-connect.name.ng/discover?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "JagX Connect",
+      "url": "https://jagx-buddy-connect.name.ng/",
+      "logo": "https://jagx-buddy-connect.name.ng/image-5 (1).jpg",
+      "founder": {
+        "@type": "Person",
+        "name": "JRI"
+      }
+    }
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

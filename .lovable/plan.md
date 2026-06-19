@@ -1,44 +1,86 @@
-## Reality check
+# Move to your own Supabase + polish pass
 
-Your request bundles many large items together. I'll be honest about what's realistic per turn so we don't end up with a broken app.
+## 1. Personal Supabase migration (you run it, I prep the code)
 
-- **"100 new admin features"** — not feasible in one shot. I'll build a real admin foundation (role-based admin, settings table, dynamic theming, user ban, feature flags, content moderation, video promotion) and we'll add specific features iteratively as you name them.
-- **Hardcoded admin password `12345Taju`** — I will **not** hardcode that. It's unsafe (anyone reading your code would have admin). Instead: sign up `jagwazorld@gmail.com` normally through your auth page, and a migration will grant that email the `admin` role automatically. You keep using your own password.
-- **".env stays as-is"** — confirmed, I won't touch your Supabase env. I'll add the Firebase keys you pasted as new `VITE_FIREBASE_*` vars in `.env.example` and tell you to mirror them in Vercel.
-- **Vercel hosting on your domain** — your zip already has `vercel.json`. I'll keep it. You connect the domain in Vercel UI; nothing in code changes.
-- **"Don't use Lovable Cloud for files/users"** — confirmed, we'll keep using **your own Supabase** that's already wired in `.env`. Lovable AI Gateway (just an API for AI calls) is separate from Lovable Cloud storage and is fine to use.
+### Codebase prep I'll do now
+- Replace `lovable.auth.signInWithOAuth` with native `supabase.auth.signInWithOAuth("google", { redirectTo })` in `AuthPage.tsx`. Removes the `@/integrations/lovable` import — no more "Lovable" branding in the OAuth flow.
+- Keep `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` as env vars so the only change after migration is editing `.env`.
+- Add a `MIGRATION.md` at the repo root with the full export/import runbook (summarized below).
 
-## Phase 1 — this turn (foundation + critical fixes)
+### Runbook you'll execute on your machine
+```text
+1. Create new Supabase project (pick region close to your users).
+2. Install Supabase CLI:  npm i -g supabase
+3. Link & push schema:
+     supabase link --project-ref <NEW_REF>
+     supabase db push           # replays everything in supabase/migrations/
+4. Dump data from old project:
+     pg_dump "$OLD_DB_URL" --data-only --no-owner --schema=public \
+       --exclude-table=schema_migrations > data.sql
+5. Load into new project:
+     psql "$NEW_DB_URL" -f data.sql
+6. Copy storage buckets (avatars, posts, receipts):
+     supabase storage download --recursive ss://avatars ./avatars
+     supabase storage upload   --recursive ./avatars ss://avatars
+     (repeat for posts, receipts; mark avatars + posts public in new project)
+7. Deploy edge functions:
+     supabase functions deploy --project-ref <NEW_REF>
+8. Set function secrets (RESEND_API_KEY, LIVEKIT_*, GOOGLE_SEARCH_CONSOLE_*,
+   LOVABLE_API_KEY if you keep the AI gateway, OR your own OPENAI_API_KEY).
+9. Update .env in this project:
+     VITE_SUPABASE_URL=https://<NEW_REF>.supabase.co
+     VITE_SUPABASE_PUBLISHABLE_KEY=<NEW_ANON_KEY>
+     VITE_SUPABASE_PROJECT_ID=<NEW_REF>
+10. Update vercel.json rewrites to point /p/:id and /u/:username at the new
+    project's functions URL.
+```
 
-1. **Import your project**: copy the zip over the current TanStack template, delete TanStack-only files, install deps.
-2. **Fix blank screen**: add a global ErrorBoundary so any single component failure doesn't white-screen the whole app + a `useAuthReady` hook to gate queries until Supabase session restores.
-3. **Fix profile editing**: audit the profile page, ensure update writes to `profiles` table with proper `user_id` and RLS-compliant payload.
-4. **Switch AI from Gemini → Lovable AI**: replace the Gemini SDK calls with `fetch` against `https://ai.gateway.lovable.dev/v1/chat/completions` using `LOVABLE_API_KEY` (server-side via a small Supabase Edge Function so the key never ships to the browser). Default model: `google/gemini-3-flash-preview`.
-5. **Admin role + scaffolding**:
-   - `app_role` enum + `user_roles` table + `has_role()` SECURITY DEFINER function (the only safe pattern).
-   - Migration auto-grants `admin` to `jagwazorld@gmail.com` on signup via trigger.
-   - `/admin` route gated by `has_role(uid, 'admin')`.
-   - Admin can: ban/unban users, toggle feature flags, edit theme colors stored in a `app_settings` table, promote videos (boolean column).
-6. **Group creation fix**: read your current group code + RLS, identify the failure (most often missing `created_by = auth.uid()` or RLS policy gap), patch it.
-7. **PWA push notifications via Firebase**:
-   - Add `firebase` + `firebase/messaging` packages.
-   - Create `public/firebase-messaging-sw.js` (separate from any existing app service worker — required for FCM background).
-   - Add a `useFcmToken()` hook that requests permission, gets the token with your VAPID key, and stores it in a new `push_tokens` table.
-   - **You'll need to add Firebase keys to Vercel env vars yourself** (I'll print the list).
+### Your own Google OAuth credentials (do this before step 9)
+1. Google Cloud Console → APIs & Services → OAuth consent screen → External →
+   App name "JagX Buddy Connect", support email = jagwazorld@gmail.com,
+   authorized domains = your final domain.
+2. Credentials → Create Credentials → OAuth Client ID → Web application.
+3. Authorized redirect URI:  https://<NEW_REF>.supabase.co/auth/v1/callback
+4. Copy Client ID + Secret → Supabase Dashboard → Authentication → Providers
+   → Google → enable, paste both, save.
 
-## Phase 2 — next turns (after Phase 1 lands cleanly)
+## 2. Account-security hardening
+- Enable HIBP leaked-password check on the Supabase Auth config.
+- Auth rate limiting: lives in Supabase dashboard (Auth → Rate Limits) — I'll
+  document the recommended values in MIGRATION.md (sign-in 30/hr/IP, OTP 5/hr,
+  password reset 5/hr).
+- Session revocation UI: deferred per your scope (you didn't pick it). Say the
+  word and I'll add /settings/sessions.
 
-- Theme editor UI for admin (live color picker → updates `app_settings` → CSS vars).
-- Feature flag toggle UI.
-- Video promotion management (pin/boost/expire).
-- Content moderation queue (reported posts).
-- Then we tackle your specific feature list one batch at a time.
+## 3. Stylish "Welcome back" overlay
+New `<WelcomeBackOverlay />` mounted in `AppContent`:
+- Listens to `onAuthStateChange("SIGNED_IN")`.
+- Full-screen onyx backdrop with gold radial glow, avatar in a gold ring,
+  "Welcome back, <Display Name>" in Playfair italic, animated gold underline
+  sweep, auto-dismiss in 2.2s.
+- Replaces the plain `toast.success("Welcome back!")` calls in AuthPage.
 
-## Notes (technical)
+## 4. Unread jump + per-conversation badges
+- `ChatPage` query: for each DM partner / group, count `messages` / `group_messages` where `is_read=false` AND `receiver_id=me` (DM) or `created_at > last_read_at` (group via new `group_reads` table).
+- Render the count on the existing `ChatPreview` badge.
+- On opening a DM/group, scroll to the first unread message with a thin gold
+  "Unread messages" divider above it; if none, scroll to bottom (existing
+  behavior).
+- New tiny migration: `group_reads(user_id, group_id, last_read_at)` + RLS +
+  GRANT (own rows only).
 
-- **Stack swap**: current Lovable preview is TanStack Start. Replacing with your Vite/React Router app means the preview will rebuild from scratch — expect ~1 min before it shows your real app.
-- **Firebase service worker**: lives at `public/firebase-messaging-sw.js`, NOT in the PWA cache worker. Push works only on HTTPS — fine on Vercel and Lovable preview.
-- **No hardcoded credentials**: admin is identified by email + role row, not by a password literal in code.
-- **AI key**: `LOVABLE_API_KEY` will be auto-provisioned; AI calls go through a Supabase Edge Function so the key stays server-side.
+## Files I'll touch
+- new: `MIGRATION.md`, `src/components/WelcomeBackOverlay.tsx`
+- new migration: `group_reads` table + grants/RLS
+- edit: `src/pages/AuthPage.tsx` (drop lovable.auth, use supabase.auth)
+- edit: `src/App.tsx` (mount overlay)
+- edit: `src/pages/ChatPage.tsx` (unread counts per row)
+- edit: `src/pages/DirectMessagePage.tsx` and `src/pages/GroupChatPage.tsx`
+  (jump-to-unread + divider, mark as read)
+- Supabase auth config: enable HIBP
 
-Reply **"go phase 1"** (or with edits) and I'll start importing and fixing.
+## Out of scope for this pass (per your selection)
+- Session revocation UI
+- Auth rate-limit tuning beyond documenting recommended values (dashboard-only)
+
+Approve and I'll ship it.
