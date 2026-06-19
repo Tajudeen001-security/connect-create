@@ -2,7 +2,9 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Mail, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { Mail, ArrowLeft, Eye, EyeOff, Timer, RotateCw } from "lucide-react";
+import { useOtpTimer, formatCountdown } from "@/hooks/useOtpTimer";
+import { routeAfterAuth } from "@/lib/postAuthRoute";
 
 type AuthMode = "login" | "signup" | "forgot";
 type AuthMethod = "email";
@@ -13,9 +15,9 @@ const COUNTRIES = ["Nigeria","United States","United Kingdom","Ghana","South Afr
 const AuthPage = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("login");
-  const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
-  const [loginOtpStep, setLoginOtpStep] = useState<CodeStep>("request");
   const method: AuthMethod = "email";
+  const signupOtp = useOtpTimer();
+  const forgotOtp = useOtpTimer();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
