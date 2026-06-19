@@ -14,6 +14,8 @@ import AnalyticsTracker from "@/components/AnalyticsTracker";
 import SeoCheck from "@/components/SeoCheck";
 import CookieConsent from "@/components/CookieConsent";
 import WelcomeBackOverlay from "@/components/WelcomeBackOverlay";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { PushNotifications } from "@/hooks/usePushNotifications";
 import Index from "./pages/Index";
 import ReelsPage from "./pages/ReelsPage";
 import ChatPage from "./pages/ChatPage";
