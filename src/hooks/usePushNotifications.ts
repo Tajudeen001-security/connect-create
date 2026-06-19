@@ -1,60 +1,71 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getToken, onMessage } from "firebase/messaging";
 import { getFirebaseMessaging, VAPID_KEY } from "@/lib/firebase";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
+export type PushStatus =
+  | "loading"
+  | "unsupported"
+  | "no-vapid"
+  | "default"
+  | "granted"
+  | "denied"
+  | "error";
+
+function detectSupport(): boolean {
+  if (typeof window === "undefined") return false;
+  if (typeof Notification === "undefined") return false;
+  if (!("serviceWorker" in navigator)) return false;
+  if (!("PushManager" in window)) return false;
+  return true;
+}
+
 /**
- * Registers the FCM service worker, requests permission, gets a token,
- * and stores it in `public.push_tokens` for the current user. Also wires a
- * foreground message handler that surfaces a toast.
+ * Handles FCM web-push enrollment for the current user.
  *
- * Call <PushNotifications /> or use this hook anywhere inside an authed page.
+ * Behavior: never auto-prompts the browser. On mount, if permission is already
+ * granted, silently refreshes the token (handles token rotation across devices).
+ * Call `enable()` from a user gesture to request permission and store a token.
  */
 export function usePushNotifications() {
   const { user } = useAuth();
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
-    typeof Notification !== "undefined" ? Notification.permission : "unsupported",
-  );
+  const [status, setStatus] = useState<PushStatus>("loading");
   const [token, setToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
+  // Initial status detection.
   useEffect(() => {
-    if (!user) return;
-    if (typeof Notification === "undefined" || typeof navigator === "undefined") return;
-    if (!("serviceWorker" in navigator)) return;
-    if (!VAPID_KEY) {
-      console.warn("[push] VITE_FIREBASE_VAPID_KEY not set; push disabled.");
+    if (!detectSupport()) {
+      setStatus("unsupported");
       return;
     }
+    if (!VAPID_KEY) {
+      setStatus("no-vapid");
+      return;
+    }
+    setStatus(Notification.permission as PushStatus);
+  }, []);
 
-    let unsubscribe: (() => void) | undefined;
+  const registerToken = useCallback(
+    async (opts?: { silent?: boolean }): Promise<string | null> => {
+      if (!user) return null;
+      if (!detectSupport() || !VAPID_KEY) return null;
 
-    (async () => {
       try {
-        // Register the Firebase messaging service worker.
-        const swReg = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
-          scope: "/firebase-cloud-messaging-push-scope",
-        });
-
-        // Ask permission only if not already decided.
-        let perm = Notification.permission;
-        if (perm === "default") perm = await Notification.requestPermission();
-        setPermission(perm);
-        if (perm !== "granted") return;
-
+        const swReg = await navigator.serviceWorker.register(
+          "/firebase-messaging-sw.js",
+          { scope: "/firebase-cloud-messaging-push-scope" },
+        );
         const messaging = await getFirebaseMessaging();
-        if (!messaging) return;
-
+        if (!messaging) return null;
         const tok = await getToken(messaging, {
           vapidKey: VAPID_KEY,
           serviceWorkerRegistration: swReg,
         });
-        if (!tok) return;
-        setToken(tok);
+        if (!tok) return null;
 
-        // `push_tokens` is added by /supabase-patches/2026-06-19-roles-push-admin.sql.
-        // The generated types may not include it yet, so use a runtime cast.
         await (supabase as any).from("push_tokens").upsert(
           {
             user_id: user.id,
@@ -65,27 +76,82 @@ export function usePushNotifications() {
           },
           { onConflict: "token" },
         );
-
-        const off = onMessage(messaging, (payload) => {
-          const title = payload.notification?.title ?? "JagX Connect";
-          const body = payload.notification?.body ?? "";
-          toast(title, { description: body });
-        });
-        unsubscribe = off;
+        setToken(tok);
+        return tok;
       } catch (e) {
-        console.warn("[push] setup failed:", e);
+        console.warn("[push] registerToken failed:", e);
+        if (!opts?.silent) setStatus("error");
+        return null;
       }
+    },
+    [user],
+  );
+
+  // If already granted, silently sync token on login.
+  useEffect(() => {
+    if (!user) return;
+    if (status !== "granted") return;
+    void registerToken({ silent: true });
+  }, [user, status, registerToken]);
+
+  // Foreground messages.
+  useEffect(() => {
+    if (status !== "granted") return;
+    let off: (() => void) | undefined;
+    (async () => {
+      const messaging = await getFirebaseMessaging();
+      if (!messaging) return;
+      off = onMessage(messaging, (payload) => {
+        const title = payload.notification?.title ?? "JagX Connect";
+        const body = payload.notification?.body ?? "";
+        toast(title, { description: body });
+      });
     })();
+    return () => off?.();
+  }, [status]);
 
-    return () => {
-      unsubscribe?.();
-    };
-  }, [user]);
+  const enable = useCallback(async (): Promise<PushStatus> => {
+    if (!detectSupport()) {
+      setStatus("unsupported");
+      return "unsupported";
+    }
+    if (!VAPID_KEY) {
+      setStatus("no-vapid");
+      return "no-vapid";
+    }
+    if (!user) {
+      toast.error("Sign in to enable notifications");
+      return status;
+    }
+    setBusy(true);
+    try {
+      let perm: NotificationPermission = Notification.permission;
+      if (perm === "default") perm = await Notification.requestPermission();
+      setStatus(perm as PushStatus);
+      if (perm !== "granted") {
+        if (perm === "denied") {
+          toast.error("Notifications blocked", {
+            description: "Enable them in your browser site settings.",
+          });
+        }
+        return perm as PushStatus;
+      }
+      const tok = await registerToken();
+      if (tok) {
+        toast.success("Notifications enabled");
+        return "granted";
+      }
+      toast.error("Could not register for notifications");
+      return "error";
+    } finally {
+      setBusy(false);
+    }
+  }, [user, status, registerToken]);
 
-  return { permission, token };
+  return { status, token, busy, enable };
 }
 
-/** Mount-only side-effect component you can drop into the app shell. */
+/** Background side-effect mount: silently syncs token when already granted. */
 export function PushNotifications() {
   usePushNotifications();
   return null;
