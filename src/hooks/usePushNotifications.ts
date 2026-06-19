@@ -53,7 +53,9 @@ export function usePushNotifications() {
         if (!tok) return;
         setToken(tok);
 
-        await supabase.from("push_tokens").upsert(
+        // `push_tokens` is added by /supabase-patches/2026-06-19-roles-push-admin.sql.
+        // The generated types may not include it yet, so use a runtime cast.
+        await (supabase as any).from("push_tokens").upsert(
           {
             user_id: user.id,
             token: tok,
