@@ -13,6 +13,8 @@ const COUNTRIES = ["Nigeria","United States","United Kingdom","Ghana","South Afr
 const AuthPage = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("login");
+  const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
+  const [loginOtpStep, setLoginOtpStep] = useState<CodeStep>("request");
   const method: AuthMethod = "email";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -172,10 +174,50 @@ const AuthPage = () => {
           navigate("/");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        window.dispatchEvent(new CustomEvent("welcome-back"));
-        navigate("/");
+        // LOGIN mode — supports password or OTP. Existing password accounts keep
+        // working; users without a password (created via OTP) can use the code path.
+        if (loginMethod === "otp") {
+          if (loginOtpStep === "request") {
+            if (!email) throw new Error("Enter your email first");
+            const { error } = await supabase.auth.signInWithOtp({
+              email,
+              options: { shouldCreateUser: false },
+            });
+            if (error) throw error;
+            setLoginOtpStep("verify");
+            toast.success("We emailed you a 6-digit code");
+          } else {
+            const { error: vErr } = await supabase.auth.verifyOtp({
+              email,
+              token: otp.replace(/\D/g, "").slice(-6),
+              type: "email",
+            });
+            if (vErr) throw vErr;
+            window.dispatchEvent(new CustomEvent("welcome-back"));
+            navigate("/");
+          }
+        } else {
+          const { error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) {
+            // Auto-fallback: account exists but has no password (OTP-created).
+            if (/invalid login credentials|invalid_credentials/i.test(error.message)) {
+              toast.error("Wrong password — try a sign-in code instead", {
+                action: {
+                  label: "Send code",
+                  onClick: () => {
+                    setLoginMethod("otp");
+                    setLoginOtpStep("request");
+                    setOtp("");
+                  },
+                },
+              });
+              return;
+            }
+            throw error;
+          }
+          window.dispatchEvent(new CustomEvent("welcome-back"));
+          navigate("/");
+        }
       }
     } catch (error: any) {
       toast.error(error.message);
