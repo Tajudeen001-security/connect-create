@@ -28,26 +28,46 @@ const EditProfilePage = () => {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles").select("*").eq("user_id", user.id).single()
-      .then(({ data }) => {
-        if (data) {
-          setProfile(data);
-          setUsername(data.username || "");
-          setDisplayName(data.display_name || "");
-          setBio(data.bio || "");
-          setLocation(data.location || "");
-          setFirstName((data as any).first_name || "");
-          setMiddleName((data as any).middle_name || "");
-          setLastName((data as any).last_name || "");
-          setDob((data as any).date_of_birth || "");
-          setSex((data as any).sex || "");
-          setCountry((data as any).country || "");
-          setRegion((data as any).region || "");
-          setCity((data as any).city || "");
-          setAddress((data as any).address || "");
-          setAiConsent(!!(data as any).ai_training_consent);
-        }
-      });
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        toast.error("Failed to load profile: " + error.message);
+        // Fall through with an empty profile so the page still renders
+        // (prevents infinite blank spinner if RLS or row is missing).
+        setProfile({});
+        return;
+      }
+      if (!data) {
+        // No profile row yet — create one so editing works on first visit.
+        await supabase.from("profiles").insert({ user_id: user.id, username: (user.email || "user").split("@")[0] });
+        setProfile({});
+        return;
+      }
+      setProfile(data);
+      setUsername(data.username || "");
+      setDisplayName(data.display_name || "");
+      setBio(data.bio || "");
+      setLocation(data.location || "");
+      setFirstName((data as any).first_name || "");
+      setMiddleName((data as any).middle_name || "");
+      setLastName((data as any).last_name || "");
+      setDob((data as any).date_of_birth || "");
+      setSex((data as any).sex || "");
+      setCountry((data as any).country || "");
+      setRegion((data as any).region || "");
+      setCity((data as any).city || "");
+      setAddress((data as any).address || "");
+      setAiConsent(!!(data as any).ai_training_consent);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const uploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
