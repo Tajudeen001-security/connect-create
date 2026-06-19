@@ -16,6 +16,7 @@ import CookieConsent from "@/components/CookieConsent";
 import WelcomeBackOverlay from "@/components/WelcomeBackOverlay";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { PushNotifications } from "@/hooks/usePushNotifications";
+import { PushDeepLinkBridge } from "@/components/PushDeepLinkBridge";
 import Index from "./pages/Index";
 import ReelsPage from "./pages/ReelsPage";
 import ChatPage from "./pages/ChatPage";
@@ -35,6 +36,7 @@ import GroupChatPage from "./pages/GroupChatPage";
 import EarningsPage from "./pages/EarningsPage";
 import AdsPage from "./pages/AdsPage";
 import AdminPage from "./pages/AdminPage";
+import AdminPushLogsPage from "./pages/AdminPushLogsPage";
 import PostDetailPage from "./pages/PostDetailPage";
 import GroupDiscoverPage from "./pages/GroupDiscoverPage";
 import JoinGroupPage from "./pages/JoinGroupPage";
@@ -106,6 +108,7 @@ const AppContent = () => {
         <Route path="/earnings" element={<ProtectedRoute><EarningsPage /></ProtectedRoute>} />
         <Route path="/ads" element={<ProtectedRoute><AdsPage /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+        <Route path="/admin/push-logs" element={<ProtectedRoute><AdminPushLogsPage /></ProtectedRoute>} />
         <Route path="/post/:postId" element={<ProtectedRoute><PostDetailPage /></ProtectedRoute>} />
         {/* Shareable short link — same view as /post/:id, used by /p/:id when the
             edge OG rewrite isn't reachable so the link always lands on the post. */}
@@ -130,6 +133,7 @@ const App = () => (
           <BrowserRouter>
             <FeatureFlagsProvider>
               <PushNotifications />
+              <PushDeepLinkBridge />
               <AppContent />
             </FeatureFlagsProvider>
           </BrowserRouter>
