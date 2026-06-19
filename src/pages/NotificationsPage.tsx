@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import BottomNav from "@/components/BottomNav";
+import NotificationPrompt from "@/components/NotificationPrompt";
 
 interface Notification {
   id: string;
@@ -146,7 +147,12 @@ const NotificationsPage = () => {
         </div>
       </header>
 
+      <div className="px-3 pt-2">
+        <NotificationPrompt compact />
+      </div>
+
       {notifications.length === 0 ? (
+
         <div className="flex flex-col items-center justify-center py-20">
           <Bell className="size-12 text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground">No notifications yet</p>
