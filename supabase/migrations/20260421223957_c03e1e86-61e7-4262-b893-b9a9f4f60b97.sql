@@ -1,0 +1,1 @@
+ALTER VIEW public.gift_ledger SET (security_invoker = true);

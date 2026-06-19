@@ -1,0 +1,18 @@
+{
+  "name": "JagX Connect — Social, Reels, Live & Chat",
+  "short_name": "JagX Connect",
+  "description": "JagX Buddy Connect 3.0 — share posts, reels, go live, chat & send JagX Coin gifts.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0a0a0a",
+  "background_color": "#0a0a0a",
+  "lang": "en",
+  "categories": ["social", "entertainment", "lifestyle"],
+  "icons": [
+    { "src": "/image-5 (1).jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any" },
+    { "src": "/image-5 (1).jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" },
+    { "src": "/image-5 (1).jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "maskable" }
+  ]
+}
