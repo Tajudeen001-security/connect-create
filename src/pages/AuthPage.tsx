@@ -363,16 +363,41 @@ const AuthPage = () => {
 
           {((mode === "forgot" && forgotStep === "verify") ||
             (mode === "signup" && signupStep === "verify")) && (
-            <input
-              type="text"
-              placeholder="6-digit code from email"
-              inputMode="numeric"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-foreground placeholder:text-muted-foreground outline-none focus:border-primary text-sm text-center tracking-[0.5em]"
-              maxLength={6}
-              required
-            />
+            <>
+              <input
+                type="text"
+                placeholder="6-digit code from email"
+                inputMode="numeric"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-surface border border-border text-foreground placeholder:text-muted-foreground outline-none focus:border-primary text-sm text-center tracking-[0.5em]"
+                maxLength={6}
+                required
+              />
+              {(() => {
+                const which: "signup" | "forgot" = mode === "signup" ? "signup" : "forgot";
+                const t = which === "signup" ? signupOtp : forgotOtp;
+                return (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Timer className="size-3.5" />
+                      {t.expired
+                        ? <span className="text-red-400">Code expired</span>
+                        : <>Expires in <b className="text-foreground">{formatCountdown(t.expiresIn)}</b></>}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={loading || !t.canResend}
+                      onClick={() => resendOtp(which)}
+                      className="inline-flex items-center gap-1 text-gold font-semibold disabled:opacity-50 disabled:text-muted-foreground"
+                    >
+                      <RotateCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+                      {t.canResend ? "Resend code" : `Resend in ${t.resendIn}s`}
+                    </button>
+                  </div>
+                );
+              })()}
+            </>
           )}
 
           {mode === "forgot" && forgotStep === "verify" && (
