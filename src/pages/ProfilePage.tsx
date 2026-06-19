@@ -107,8 +107,8 @@ const ProfilePage = () => {
             {!profile?.bio && <p className="text-xs text-muted-foreground mb-3">New to JagX Buddy Connect ✨</p>}
             <div className="flex gap-6">
               <div className="text-center"><p className="text-sm font-bold text-champagne">{posts.length}</p><p className="text-[10px] text-muted-foreground">Posts</p></div>
-              <div className="text-center"><p className="text-sm font-bold text-champagne">{followerCount}</p><p className="text-[10px] text-muted-foreground">Followers</p></div>
-              <div className="text-center"><p className="text-sm font-bold text-champagne">{followingCount}</p><p className="text-[10px] text-muted-foreground">Following</p></div>
+              <button onClick={() => user && navigate(`/user/${user.id}/followers`)} className="text-center"><p className="text-sm font-bold text-champagne">{followerCount}</p><p className="text-[10px] text-muted-foreground">Followers</p></button>
+              <button onClick={() => user && navigate(`/user/${user.id}/following`)} className="text-center"><p className="text-sm font-bold text-champagne">{followingCount}</p><p className="text-[10px] text-muted-foreground">Following</p></button>
             </div>
           </div>
         </div>
