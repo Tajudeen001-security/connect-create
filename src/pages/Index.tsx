@@ -13,6 +13,7 @@ import StructuredData from "@/components/StructuredData";
 import Canonical from "@/components/Canonical";
 import NotificationBell from "@/components/NotificationBell";
 import MessageIconBadge from "@/components/MessageIconBadge";
+import NotificationPrompt from "@/components/NotificationPrompt";
 import { buildUserAffinity, rankPosts, type UserAffinity } from "@/lib/feedRank";
 
 interface StoryGroup {
@@ -151,6 +152,11 @@ const FeedPage = () => {
           </div>
         </div>
       </header>
+
+      <div className="px-3 pt-2">
+        <NotificationPrompt compact />
+      </div>
+
 
       {pendingCount > 0 && (
         <div className="sticky top-14 z-30 flex justify-center pt-2">
