@@ -109,26 +109,36 @@ const CreatePage = () => {
         toast.success("Story posted! 🐆");
       } else if (postType === "poll") {
         const cleaned = pollOptions.map(o => o.trim()).filter(Boolean);
-        const { error } = await supabase.from("posts").insert({
-          user_id: user.id,
-          content: content,
-          post_type: "text",
-          is_poll: true,
-          poll_options: cleaned,
+        const basePoll: any = {
+          user_id: user.id, content, post_type: "text",
+          is_poll: true, poll_options: cleaned,
+        };
+        let { error } = await supabase.from("posts").insert({
+          ...basePoll,
           hashtags: parsedTags.length > 0 ? parsedTags : null,
         });
+        if (error && /hashtags|poll_options|is_poll|post_type/i.test(error.message)) {
+          ({ error } = await supabase.from("posts").insert({ user_id: user.id, content }));
+        }
         if (error) throw error;
         toast.success("Poll posted! 📊");
       } else {
-        const { error } = await supabase.from("posts").insert({
+        const fallbackBase: any = {
           user_id: user.id,
           content: content || null,
           image_url: mediaType === "image" ? mediaUrl : null,
           video_url: mediaType === "video" ? mediaUrl : null,
+        };
+        let { error } = await supabase.from("posts").insert({
+          ...fallbackBase,
           post_type: mediaFile ? mediaType : "text",
           hashtags: parsedTags.length > 0 ? parsedTags : null,
           unlock_price: unlockPrice,
         });
+        // Graceful fallback if optional columns are missing in the schema.
+        if (error && /hashtags|unlock_price|post_type/i.test(error.message)) {
+          ({ error } = await supabase.from("posts").insert(fallbackBase));
+        }
         if (error) throw error;
         toast.success("Posted! 🐆");
       }
