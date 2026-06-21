@@ -47,7 +47,8 @@ const GroupChatPage = () => {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${groupId}` },
         (payload: any) => {
           const msg = payload.new as GroupMessage;
-          // Fetch sender profile          supabase.from("profiles").select("username, avatar_url").eq("user_id", msg.sender_id).single()
+          // Fetch sender profile
+          supabase.from("profiles").select("username, avatar_url").eq("user_id", msg.sender_id).single()
             .then(({ data }) => {
               setMessages(prev => [...prev, { ...msg, username: data?.username || "user", avatar_url: data?.avatar_url }]);
             });
@@ -96,7 +97,8 @@ const GroupChatPage = () => {
     const { data: readRow } = await supabase
       .from("group_reads" as any)
       .select("last_read_at")
-      .eq("user_id", user.id)      .eq("group_id", groupId)
+      .eq("user_id", user.id)
+      .eq("group_id", groupId)
       .maybeSingle();
     const lastRead = (readRow as any)?.last_read_at || "1970-01-01T00:00:00Z";
     const { data } = await supabase.from("group_messages").select("*").eq("group_id", groupId).order("created_at", { ascending: true }).limit(200);
@@ -114,74 +116,40 @@ const GroupChatPage = () => {
     );
   };
 
-  const sendMessage = async (content?: string, type?: string) => {
-    const msgContent = content || input.trim();
-    if (!msgContent || !user || !groupId) return;
-    if (!content) setInput("");
-    let finalContent = msgContent;
-    if (replyTo && (type || "text") === "text") {
-      const preview = replyTo.content.length > 50 ? replyTo.content.slice(0, 50) + "..." : replyTo.content;
-      finalContent = `┃ ${replyTo.username || "User"}: ${preview}\n\n${msgContent}`;
-      setReplyTo(null);
+  const { data: insertedMessage, error } = await supabase
+  .from("group_messages")
+  .insert({
+    group_id: groupId,
+    sender_id: user.id,
+    content: finalContent,
+    message_type: type || "text",
+  })
+  .select()
+  .single();
+
+if (error) {
+  toast.error(error.message || "Message failed to send");
+  if (!content) setInput(msgContent);
+  return;
+}
+
+if (insertedMessage) {
+  setMessages((prev) => {
+    if (prev.some((message) => message.id === insertedMessage.id)) {
+      return prev;
     }
 
-    const { data: insertedMessage, error } = await supabase
-      .from("group_messages")
-      .insert({
-        group_id: groupId,
-        sender_id: user.id,
-        content: finalContent,
-        message_type: type || "text",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      toast.error(error.message || "Message failed to send");
-      if (!content) setInput(msgContent);
-      return;
-    }
-
-    if (insertedMessage) {
-      setMessages((prev) => {
-        if (prev.some((message) => message.id === insertedMessage.id)) {
-          return prev;        }
-
-        return [
-          ...prev,
-          {
-            ...insertedMessage,
-            username: "You",
-            avatar_url: null,
-          },
-        ];
-      });
-    }
-
-    if (!content) {
-      const trig = parseAiTrigger(msgContent);
-      if (trig && !aiInFlight.current) {
-        aiInFlight.current = true;
-        setAiBusy(true);
-        try {
-          if (trig.kind === "image") {
-            const url = await generateAndStoreImage(trig.prompt, user.id);
-            await supabase.from("group_messages").insert({ group_id: groupId, sender_id: user.id, content: url, message_type: "image" });
-            await supabase.from("group_messages").insert({ group_id: groupId, sender_id: user.id, content: `🤖 ${AI_DISPLAY_NAME}: generated for "${trig.prompt}"`, message_type: "text" });
-          } else {
-            const history = messages.slice(-6).map(m => ({ role: m.sender_id === user.id ? "user" as const : "model" as const, text: m.content }));
-            const reply = await runAiText(trig.prompt, history);
-            await supabase.from("group_messages").insert({ group_id: groupId, sender_id: user.id, content: `🤖 ${AI_DISPLAY_NAME}: ${reply}`, message_type: "text" });
-          }
-        } catch (e: any) {
-          toast.error(e?.message || "AI request failed");
-        } finally {
-          aiInFlight.current = false;
-          setAiBusy(false);
-        }
-      }
-    }
-  };
+    return [
+      ...prev,
+      {
+        ...insertedMessage,
+        username: "You",
+        avatar_url: null,
+      },
+    ];
+  });
+}
+  
 
   const handleMedia = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -191,6 +159,3 @@ const GroupChatPage = () => {
     if (error) { toast.error("Upload failed"); return; }
     const { data: { publicUrl } } = supabase.storage.from("posts").getPublicUrl(path);
     await sendMessage(publicUrl, file.type.startsWith("video") ? "video" : "image");
-  };
-
-  // ... rest of your component code
