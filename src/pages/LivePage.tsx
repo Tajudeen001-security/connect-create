@@ -72,7 +72,12 @@ const LivePage = () => {
   const goLive = async () => {
     if (!user || !liveTitle.trim()) return;
     const { data, error } = await supabase.from("live_streams").insert({ user_id: user.id, title: liveTitle.trim(), is_active: true }).select().single();
-    if (error) { toast.error("Failed to go live"); return; }
+    if (error) {
+  console.error("go live error", error);
+  toast.error(error.message || "Failed to go live");
+  return;
+    }
+    
     setMyStream(data);
     setActiveStream({ ...data, username: "You", avatar_url: null });
     setShowGoLive(false);
