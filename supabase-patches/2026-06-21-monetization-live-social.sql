@@ -226,9 +226,12 @@ CREATE TABLE IF NOT EXISTS public.group_messages (
   group_id uuid NOT NULL REFERENCES public.group_chats(id) ON DELETE CASCADE,
   sender_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   content text,
+  message_type text NOT NULL DEFAULT 'text',
   media_url text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE public.group_messages ADD COLUMN IF NOT EXISTS message_type text NOT NULL DEFAULT 'text';
+ALTER TABLE public.group_messages ADD COLUMN IF NOT EXISTS media_url text;
 CREATE INDEX IF NOT EXISTS idx_group_messages_group ON public.group_messages(group_id, created_at DESC);
 
 GRANT SELECT, INSERT, DELETE ON public.group_messages TO authenticated;
@@ -238,19 +241,33 @@ ALTER TABLE public.group_messages ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "gm_members_read" ON public.group_messages;
 CREATE POLICY "gm_members_read" ON public.group_messages
   FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.group_chat_members m
+  USING (EXISTS (SELECT 1 FROM public.group_members m
                   WHERE m.group_id = group_messages.group_id AND m.user_id = auth.uid()));
 
 DROP POLICY IF EXISTS "gm_members_insert" ON public.group_messages;
 CREATE POLICY "gm_members_insert" ON public.group_messages
   FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = sender_id AND EXISTS (
-    SELECT 1 FROM public.group_chat_members m
+    SELECT 1 FROM public.group_members m
      WHERE m.group_id = group_messages.group_id AND m.user_id = auth.uid()));
 
 DROP POLICY IF EXISTS "gm_own_delete" ON public.group_messages;
 CREATE POLICY "gm_own_delete" ON public.group_messages
   FOR DELETE TO authenticated USING (auth.uid() = sender_id);
+
+-- group_reads (so GroupChatPage's last-read upsert works)
+CREATE TABLE IF NOT EXISTS public.group_reads (
+  group_id uuid NOT NULL REFERENCES public.group_chats(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  last_read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (group_id, user_id)
+);
+GRANT SELECT, INSERT, UPDATE ON public.group_reads TO authenticated;
+GRANT ALL ON public.group_reads TO service_role;
+ALTER TABLE public.group_reads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "gr_own" ON public.group_reads;
+CREATE POLICY "gr_own" ON public.group_reads
+  FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Enable realtime for chat-style tables (best-effort, ignore if already added).
 DO $$ BEGIN
