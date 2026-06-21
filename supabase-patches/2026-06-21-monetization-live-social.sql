@@ -312,8 +312,8 @@ CREATE OR REPLACE FUNCTION public.notify_profile_view()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF NEW.viewer_id <> NEW.viewed_user_id THEN
-    INSERT INTO public.notifications (user_id, actor_id, type, entity_type, entity_id)
-    VALUES (NEW.viewed_user_id, NEW.viewer_id, 'profile_view', 'profile', NEW.viewer_id);
+    INSERT INTO public.notifications (user_id, from_user_id, type, content)
+    VALUES (NEW.viewed_user_id, NEW.viewer_id, 'profile_view', 'viewed your profile');
   END IF;
   RETURN NEW;
 EXCEPTION WHEN others THEN
