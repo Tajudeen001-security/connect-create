@@ -21,7 +21,7 @@ const UserProfilePage = () => {
 
   useEffect(() => {
     if (!userId) return;
-    supabase.from("profiles").select("*").eq("user_id", userId).single().then(({ data }) => { if (data) setProfile(data); });
+    supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle().then(({ data }) => { if (data) setProfile(data); });
     supabase.from("followers").select("id", { count: "exact" }).eq("following_id", userId).then(({ count }) => setFollowerCount(count || 0));
     supabase.from("followers").select("id", { count: "exact" }).eq("follower_id", userId).then(({ count }) => setFollowingCount(count || 0));
     supabase.from("posts").select("*").eq("user_id", userId).then(({ data }) => {
@@ -36,6 +36,25 @@ const UserProfilePage = () => {
     });
     if (user) {
       supabase.from("followers").select("id").eq("follower_id", user.id).eq("following_id", userId).then(({ data }) => setIsFollowing((data?.length || 0) > 0));
+
+      // Track profile view + notify the owner (skip self-views, throttle once per session per profile).
+      if (user.id !== userId) {
+        const viewKey = `pv:${user.id}:${userId}`;
+        if (!sessionStorage.getItem(viewKey)) {
+          sessionStorage.setItem(viewKey, "1");
+          // Log the view (best-effort).
+          supabase.from("profile_views" as any)
+            .insert({ viewer_id: user.id, viewed_user_id: userId })
+            .then(() => {});
+          // Notify the profile owner (matches existing notifications schema).
+          supabase.from("notifications").insert({
+            user_id: userId,
+            from_user_id: user.id,
+            type: "profile_view",
+            content: "viewed your profile",
+          } as any).then(() => {});
+        }
+      }
     }
   }, [userId, user]);
 
