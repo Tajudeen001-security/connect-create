@@ -1,105 +1,58 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import BottomNav from "@/components/BottomNav";
 
-const SITE = "https://jagx-buddy-connect.name.ng";
-const FALLBACK_IMG = `${SITE}/og-image.jpg`;
+// Minimal placeholder home feed. The original feed page was accidentally
+// overwritten with edge-function code. Revert via chat History to restore.
+const Index = () => {
+  const { user } = useAuth();
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  },
-);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await (supabase as any)
+          .from("posts")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(20);
+        setPosts(data || []);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
-function esc(value: string | null | undefined) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+  return (
+    <div className="min-h-screen bg-black text-white pb-20">
+      <header className="p-4 border-b border-white/10">
+        <h1 className="text-xl font-bold">JagX Buddy Connect</h1>
+        {user && <p className="text-xs text-white/50">Welcome back</p>}
+      </header>
 
-Deno.serve(async (req) => {
-  try {
-    const url = new URL(req.url);
+      <main className="p-4 space-y-3">
+        {loading && <p className="text-white/60 text-sm">Loading feed…</p>}
+        {!loading && posts.length === 0 && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+            <p className="font-semibold mb-1">Feed is empty.</p>
+            <p className="text-white/70">
+              Your home feed page was overwritten. Open chat History and revert to a version
+              from before "Enable Cloud" to restore your original feed and database.
+            </p>
+          </div>
+        )}
+        {posts.map((p) => (
+          <article key={p.id} className="rounded-lg bg-white/5 p-3">
+            <p className="text-sm whitespace-pre-wrap">{p.content}</p>
+          </article>
+        ))}
+      </main>
 
-    const username =
-      url.searchParams.get("username") ||
-      url.pathname.split("/").filter(Boolean).pop();
+      <BottomNav />
+    </div>
+  );
+};
 
-    if (!username) {
-      return new Response("Missing username", { status: 400 });
-    }
-
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select(
-        "user_id, username, display_name, bio, avatar_url, is_verified, created_at",
-      )
-      .eq("username", username)
-      .maybeSingle();
-
-    if (error) {
-      console.error("og-profile lookup error", error);
-      return new Response("Profile lookup failed", { status: 500 });
-    }
-
-    if (!profile) {
-      return new Response("Profile not found", { status: 404 });
-    }
-
-    const title = `${profile.display_name || profile.username} (@${profile.username})`;
-    const desc =
-      profile.bio ||
-      `View ${profile.display_name || profile.username}'s profile on JagX Buddy Connect.`;
-
-    const image = profile.avatar_url || FALLBACK_IMG;
-    const canonical = `${SITE}/u/${profile.username}`;
-    const appUrl = `${SITE}/user/${profile.user_id}`;
-
-    const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>${esc(title)} — JagX Buddy Connect</title>
-<meta name="description" content="${esc(desc)}" />
-<link rel="canonical" href="${esc(canonical)}" />
-
-<meta property="og:type" content="profile" />
-<meta property="og:site_name" content="JagX Buddy Connect" />
-<meta property="og:title" content="${esc(title)}" />
-<meta property="og:description" content="${esc(desc)}" />
-<meta property="og:url" content="${esc(canonical)}" />
-<meta property="og:image" content="${esc(image)}" />
-
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="${esc(title)}" />
-<meta name="twitter:description" content="${esc(desc)}" />
-<meta name="twitter:image" content="${esc(image)}" />
-
-<script>setTimeout(function(){location.replace(${JSON.stringify(appUrl)})},250)</script>
-</head>
-<body style="background:#070707;color:#f5e9c8;font-family:system-ui;padding:24px">
-<h1 style="color:#d4af37">${esc(title)}${profile.is_verified ? " ✓" : ""}</h1>
-<p>${esc(desc)}</p>
-<a style="color:#d4af37" href="${esc(appUrl)}">Open profile</a>
-</body>
-</html>`;
-
-    return new Response(html, {
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "public, max-age=60, s-maxage=300",
-      },
-    });
-  } catch (error) {
-    console.error("og-profile fatal error", error);
-    return new Response("Profile preview failed", { status: 500 });
-  }
-});
-                          
+export default Index;
